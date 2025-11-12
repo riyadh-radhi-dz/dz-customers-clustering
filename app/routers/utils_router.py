@@ -1,7 +1,45 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from app.schemas import PredictRequest, PredictResponse, HealthResponse, BatchPredictRequest
+from app.services.predictor import PredictorService
+from app.services.model_loader import ModelLoader
+from app.config import settings
+import logging
+
+logger = logging.getLogger("uvicorn.error")
 
 router = APIRouter()
 
-@router.post("/")
-async def post():
-    return {"message": "Hello from utils dz-customers-clustering!"}
+@router.get("/health", response_model=HealthResponse)
+async def health():
+    loader = ModelLoader.get_instance()
+    return HealthResponse(status="ok", model_loaded=(loader.model is not None))
+
+@router.post("/predict", response_model=PredictResponse)
+async def predict(req: PredictRequest):
+    try:
+        out = PredictorService.predict_single(req.features)
+        return PredictResponse(**out, meta={"source": "predict_single"})
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception("predict error")
+        raise HTTPException(status_code=500, detail="prediction failed")
+
+@router.post("/batch_predict")
+async def batch_predict(req: BatchPredictRequest):
+    try:
+        return PredictorService.predict_batch(req.features_batch)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception:
+        logger.exception("batch predict error")
+        raise HTTPException(status_code=500, detail="batch prediction failed")
+
+@router.post("/reload_model")
+async def reload_model():
+    try:
+        await ModelLoader.get_instance().reload(settings.MODEL_PATH)
+        return {"detail": "model reloaded"}
+    except Exception:
+        logger.exception("reload model failed")
+        raise HTTPException(status_code=500, detail="reload failed")
