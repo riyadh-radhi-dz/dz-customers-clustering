@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from joblib import load
-from sklearn.cluster import KMeans
+from kmodes.kprototypes import KPrototypes
 from sklearn.preprocessing import StandardScaler
 
 from dz_customers_clustering.artifacts import PreprocessArtifacts
@@ -16,7 +16,7 @@ ARTIFACTS_DIR = Path("artifacts")
 logger = logging.getLogger(__name__)
 
 
-def load_preprocess_artifacts() -> tuple[KMeans, StandardScaler, PreprocessArtifacts]:
+def load_preprocess_artifacts() -> tuple[KPrototypes, StandardScaler, PreprocessArtifacts]:
     """Load persisted model, scaler, and preprocessing metadata."""
     model = load(ARTIFACTS_DIR / "kmeans_cta_model.pkl")
     scaler = load(ARTIFACTS_DIR / "scaler.pkl")
@@ -41,6 +41,11 @@ def _prepare_features_from_record(
 ) -> tuple[np.ndarray, pd.DataFrame]:
     sample_df = pd.DataFrame([record])
     sample_df["gender"] = sample_df["gender"].apply(_normalize_gender_value)
+    sample_df["bnpl_eligible"] = (
+        pd.to_numeric(sample_df.get("bnpl_eligible"), errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
     numeric_df = pd.DataFrame()
     for column in metadata.numeric_columns:
         numeric_df[column] = pd.to_numeric(sample_df.get(column), errors="coerce")
@@ -55,23 +60,12 @@ def _prepare_features_from_record(
 
 
 def predict_cluster(
-    sample_record: dict[str, float | int | str] | None = None,
+    sample_record: dict[str, float | int | str],
+    model: KPrototypes,
+    scaler: StandardScaler,
+    metadata: PreprocessArtifacts,
 ) -> int:
-    """Predict a user cluster for a new record."""
-    model, scaler, metadata = load_preprocess_artifacts()
-    if sample_record is None:
-        sample_record = {
-            "gender": "Unknown",
-            "age": metadata.numeric_medians["age"],
-            "bnpl_eligible": 0,
-            "number_of_sessions": metadata.numeric_medians["number_of_sessions"],
-            "days_since_first_joined": metadata.numeric_medians["days_since_first_joined"],
-            "number_of_failed_orders": 0,
-            "number_of_successful_orders": metadata.numeric_medians[
-                "number_of_successful_orders"
-            ],
-        }
-
+    """Predict a user cluster for a new record using preloaded artifacts."""
     numeric_array, categorical_df = _prepare_features_from_record(sample_record, metadata)
     scaled_numeric = scaler.transform(numeric_array)
     scaled_numeric_df = pd.DataFrame(scaled_numeric, columns=metadata.numeric_columns)

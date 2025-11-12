@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 NUMERIC_COLUMNS = [
     "age",
-    "bnpl_eligible",
     "number_of_sessions",
     "days_since_first_joined",
     "number_of_failed_orders",
@@ -39,7 +38,10 @@ LOG_COLUMNS = [
 ]
 
 GENDER_CATEGORIES = ["M", "F", "Unknown"]
-CATEGORICAL_COLUMNS = ["gender"]
+CATEGORICAL_COLUMNS = ["gender", "bnpl_eligible"]
+K_RANGE = range(3, 7)
+DEFAULT_K = 7
+AUTO_SELECT_K = False
 
 DATA_EXTRACTION_QUERY = """
 WITH
@@ -148,8 +150,7 @@ def preprocess_data(
     )
 
     insights_df = work_df[
-        ["user_id", "gender"]
-        + NUMERIC_COLUMNS
+        ["user_id", "gender", "bnpl_eligible"] + NUMERIC_COLUMNS
     ].copy()
 
     numeric_medians: dict[str, float] = {}
@@ -200,7 +201,7 @@ def _build_training_matrix(
 def find_optimal_k(
     data_matrix: np.ndarray,
     categorical_indices: list[int],
-    k_values: Iterable[int] = range(2, 11),
+    k_values: Iterable[int] = K_RANGE,
 ) -> dict[str, dict[int, float] | int]:
     """Compute K-Prototypes cost for a range of k."""
     logger.info("Searching for optimal k in range %s", list(k_values))
@@ -215,7 +216,8 @@ def find_optimal_k(
             n_clusters=k,
             init="Huang",
             random_state=42,
-            n_init=5,
+            n_init=2,
+            max_iter=10,
             n_jobs=-1,
         )
         model.fit(data_matrix, categorical=categorical_indices)
@@ -237,7 +239,8 @@ def train_model(
         n_clusters=n_clusters,
         init="Huang",
         random_state=42,
-        n_init=5,
+        n_init=2,
+        max_iter=10,
         n_jobs=-1,
     )
     model.fit(data_matrix, categorical=categorical_indices)
@@ -258,7 +261,6 @@ def generate_insights(insights_df: pd.DataFrame, labels: np.ndarray) -> pd.DataF
             avg_failed_orders=("number_of_failed_orders", "mean"),
             avg_successful_orders=("number_of_successful_orders", "mean"),
             avg_days_since_joined=("days_since_first_joined", "mean"),
-            bnpl_rate=("bnpl_eligible", "mean"),
         )
         .round(2)
     )
@@ -274,7 +276,19 @@ def generate_insights(insights_df: pd.DataFrame, labels: np.ndarray) -> pd.DataF
         .div(summary["user_count"], axis=0)
         .round(2)
     )
-    summary = summary.join(gender_mix, how="left").fillna(0)
+    bnpl_mix = (
+        result_df.pivot_table(
+            index="cluster",
+            columns="bnpl_eligible",
+            values="user_id",
+            aggfunc="count",
+            fill_value=0,
+        )
+        .div(summary["user_count"], axis=0)
+        .round(2)
+    )
+    bnpl_mix = bnpl_mix.rename(columns={0: "bnpl_0", 1: "bnpl_1"})
+    summary = summary.join(gender_mix, how="left").join(bnpl_mix, how="left").fillna(0)
     print("Cluster insights:")
     print(summary)
     logger.info("Generated insights for %d clusters", summary.shape[0])
@@ -363,17 +377,25 @@ def run_pipeline(client: Client | None = None) -> None:
         len(insights_df),
         data_matrix.shape,
     )
-    diagnostics = find_optimal_k(data_matrix, categorical_indices)
-    if not diagnostics["best_k"]:
-        raise RuntimeError("Unable to determine optimal k from diagnostics.")
-    logger.info(
-        "Diagnostics finished; best_k=%s, evaluated ks=%s",
-        diagnostics["best_k"],
-        list(diagnostics["costs"].keys()),
-    )
-    model = train_model(data_matrix, categorical_indices, diagnostics["best_k"])
+    if AUTO_SELECT_K:
+        diagnostics = find_optimal_k(data_matrix, categorical_indices, K_RANGE)
+        if not diagnostics["best_k"]:
+            raise RuntimeError("Unable to determine optimal k from diagnostics.")
+        n_clusters = diagnostics["best_k"]
+        logger.info(
+            "Diagnostics finished; best_k=%s, evaluated ks=%s",
+            n_clusters,
+            list(diagnostics["costs"].keys()),
+        )
+    else:
+        diagnostics = None
+        n_clusters = DEFAULT_K
+        logger.info("Auto k disabled; using manual k=%d", n_clusters)
+
+    model = train_model(data_matrix, categorical_indices, n_clusters)
     clustered_df = generate_insights(insights_df, model.labels_)
     save_outputs(clustered_df, model.labels_, scaler, model, artifacts)
-    plot_k_diagnostics(diagnostics["costs"])
+    if diagnostics:
+        plot_k_diagnostics(diagnostics["costs"])
     plot_cluster_visualizations(numeric_scaled, model.labels_)
     logger.info("Pipeline run completed successfully")

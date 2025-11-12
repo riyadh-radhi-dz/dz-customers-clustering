@@ -30,8 +30,8 @@ The script:
 - pulls ~1M user rows from ClickHouse with all required joins,
 - engineers the behavioral features (age, sessions, BNPL eligibility, order counts, etc.),
 - filters out users with zero sessions, `unidentified` gender, or invalid birth dates (`1925-01-01`) directly in the ClickHouse query,
-- encodes + scales the data (log transforms + StandardScaler on numeric features, raw categorical features kept for K-Prototypes),
-- searches for the optimal `k` (2–10) via the K-Prototypes cost curve,
+- encodes + scales the data (log transforms + StandardScaler on numeric features; gender and BNPL eligibility stay categorical for K-Prototypes),
+- (optionally) searches for the optimal `k` (3–6) via the K-Prototypes cost curve (n_init=2, max_iter=10 for faster tuning); currently the pipeline is configured to use a fixed `k=4` for faster experimentation,
 - trains the final K-Prototypes model,
 - saves artifacts under `./artifacts/` (`kmeans_cta_model.pkl`, `scaler.pkl`, `preprocess_config.json`),
 - exports cluster assignments and visuals under `./outputs/` (`user_clusters.csv`, diagnostic plots, PCA scatter).

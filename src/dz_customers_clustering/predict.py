@@ -10,13 +10,16 @@ if __package__ is None or __package__ == "":
     if str(src_dir) not in sys.path:
         sys.path.append(str(src_dir))
 
-from dz_customers_clustering.inference import predict_cluster
+from dz_customers_clustering.inference import (
+    load_preprocess_artifacts,
+    predict_cluster,
+)
 
 SAMPLE_RECORD = {
     "gender": "F",
-    "age": 34,
+    "age": 35,
     "bnpl_eligible": 1,
-    "number_of_sessions": 5,
+    "number_of_sessions": 4,
     "days_since_first_joined": 420,
     "number_of_failed_orders": 0,
     "number_of_successful_orders": 3,
@@ -29,7 +32,8 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     logging.info("Predicting cluster for hard-coded sample: %s", SAMPLE_RECORD)
-    cluster = predict_cluster(SAMPLE_RECORD)
+    model, scaler, metadata = load_preprocess_artifacts()
+    cluster = predict_cluster(SAMPLE_RECORD, model, scaler, metadata)
     logging.info("Predicted cluster: %d", cluster)
 
 
