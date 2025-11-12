@@ -12,12 +12,12 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse)
 async def health():
     loader = ModelLoader.get_instance()
-    return HealthResponse(status="ok", model_loaded=(loader.model is not None))
+    return HealthResponse(status="ok", model_loaded=(loader.artifacts is not None))
 
 @router.post("/predict", response_model=PredictResponse)
 async def predict(req: PredictRequest):
     try:
-        out = PredictorService.predict_single(req.features)
+        out = PredictorService.predict_single(req.model_dump())
         return PredictResponse(**out, meta={"source": "predict_single"})
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -28,7 +28,8 @@ async def predict(req: PredictRequest):
 @router.post("/batch_predict")
 async def batch_predict(req: BatchPredictRequest):
     try:
-        return PredictorService.predict_batch(req.features_batch)
+        payload = [customer.model_dump() for customer in req.customers]
+        return PredictorService.predict_batch(payload)
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception:
@@ -38,7 +39,7 @@ async def batch_predict(req: BatchPredictRequest):
 @router.post("/reload_model")
 async def reload_model():
     try:
-        await ModelLoader.get_instance().reload(settings.MODEL_PATH)
+        await ModelLoader.get_instance().reload(settings)
         return {"detail": "model reloaded"}
     except Exception:
         logger.exception("reload model failed")

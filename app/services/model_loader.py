@@ -1,20 +1,43 @@
 # app/services/model_loader.py
 import asyncio
-import os
-from typing import Any, Optional
 import logging
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Optional, TYPE_CHECKING
+
+from joblib import load
+
+# Ensure the src/ directory (where dz_customers_clustering lives) is importable.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SRC_DIR = PROJECT_ROOT / "src"
+if SRC_DIR.exists() and str(SRC_DIR) not in sys.path:
+    sys.path.append(str(SRC_DIR))
+
+from dz_customers_clustering.artifacts import PreprocessArtifacts  # noqa: E402
+
+if TYPE_CHECKING:  # pragma: no cover
+    from app.config import Settings
 
 logger = logging.getLogger("uvicorn.error")
 
+
+@dataclass
+class LoadedArtifacts:
+    model: Any
+    scaler: Any
+    metadata: PreprocessArtifacts
+
+
 class ModelLoader:
     """
-    Singleton loader. Keeps a loaded model in memory and exposes inference entrypoints.
-    Modify `_load_from_disk` to support other formats (torch, transformers).
+    Singleton loader that keeps clustering artifacts (model, scaler, metadata) in memory.
     """
-    _instance = None
 
-    def __init__(self):
-        self.model: Optional[Any] = None
+    _instance: Optional["ModelLoader"] = None
+
+    def __init__(self) -> None:
+        self.artifacts: Optional[LoadedArtifacts] = None
         self._lock = asyncio.Lock()
 
     @classmethod
@@ -23,49 +46,63 @@ class ModelLoader:
             cls._instance = cls()
         return cls._instance
 
-    async def load(self, path: str):
+    async def load(self, settings: "Settings") -> None:
         async with self._lock:
-            if self.model is not None:
-                logger.info("Model already loaded, skipping reload.")
+            if self.artifacts is not None:
+                logger.info("Artifacts already loaded, skipping reload.")
                 return
-            logger.info("Loading model from %s", path)
-            self.model = self._load_from_disk(path)
-            logger.info("Model loaded.")
+            self.artifacts = self._load_from_disk(settings)
+            logger.info("Artifacts loaded successfully.")
 
-    def _load_from_disk(self, path: str):
-        # Example: scikit-learn/joblib; adapt for PyTorch/transformers
-        if not os.path.exists(path):
-            logger.warning("Model path %s not found — using dummy model", path)
-            return DummyModel()
+    def _load_from_disk(self, settings: "Settings") -> LoadedArtifacts:
+        model_path = Path(settings.MODEL_PATH)
+        scaler_path = Path(settings.SCALER_PATH)
+        metadata_path = Path(settings.METADATA_PATH)
 
-        try:
-            import joblib
-            model = joblib.load(path)
-            return model
-        except Exception as e:
-            logger.exception("Failed to load model using joblib: %s", e)
-            # fallback dummy
-            return DummyModel()
+        logger.info(
+            "Loading artifacts from model=%s, scaler=%s, metadata=%s",
+            model_path,
+            scaler_path,
+            metadata_path,
+        )
 
-    async def reload(self, path: str):
+        model = self._load_joblib(model_path)
+        scaler = self._load_joblib(scaler_path)
+        metadata_json = metadata_path.read_text(encoding="utf-8")
+        metadata = PreprocessArtifacts.from_json(metadata_json)
+        return LoadedArtifacts(model=model, scaler=scaler, metadata=metadata)
+
+    @staticmethod
+    def _load_joblib(path: Path) -> Any:
+        if not path.exists():
+            raise FileNotFoundError(f"Artifact not found at {path}")
+        return load(path)
+
+    async def reload(self, settings: "Settings") -> None:
         async with self._lock:
-            logger.info("Reloading model from %s", path)
-            # drop old model if necessary
-            self.model = None
-            self.model = self._load_from_disk(path)
-            logger.info("Reloaded model.")
+            logger.info("Reloading clustering artifacts.")
+            self.artifacts = self._load_from_disk(settings)
+            logger.info("Artifacts reloaded.")
 
-    async def cleanup(self):
+    async def cleanup(self) -> None:
         async with self._lock:
-            logger.info("Cleaning up model references")
-            self.model = None
+            logger.info("Cleaning up loaded artifacts.")
+            self.artifacts = None
 
-class DummyModel:
-    """A tiny fake model to allow local testing while real model path is configured."""
-    def predict(self, X):
-        # return cluster id 0 for all
-        return [0 for _ in X]
+    @property
+    def model(self) -> Optional[Any]:
+        if self.artifacts is None:
+            return None
+        return self.artifacts.model
 
-    def predict_proba(self, X):
-        # fake scores
-        return [[1.0] for _ in X]
+    @property
+    def scaler(self) -> Optional[Any]:
+        if self.artifacts is None:
+            return None
+        return self.artifacts.scaler
+
+    @property
+    def metadata(self) -> Optional[PreprocessArtifacts]:
+        if self.artifacts is None:
+            return None
+        return self.artifacts.metadata

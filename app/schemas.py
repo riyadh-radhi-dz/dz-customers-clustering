@@ -1,11 +1,24 @@
-from pydantic import BaseModel, Field
-from typing import List, Any, Optional
+from typing import Any, List, Optional
 
-class PredictRequest(BaseModel):
-    features: List[float] = Field(..., description="Feature vector for single item")
+from pydantic import BaseModel, Field
+
+
+class CustomerFeatures(BaseModel):
+    gender: str = Field(..., description="Gender code such as 'M', 'F', or 'Unknown'")
+    age: float = Field(..., ge=0, description="Age in years")
+    bnpl_eligible: int = Field(..., ge=0, le=1, description="1 if BNPL eligible else 0")
+    number_of_sessions: float = Field(..., ge=0, description="Total number of sessions")
+    days_since_first_joined: float = Field(..., ge=0, description="Days since first joined")
+    number_of_failed_orders: float = Field(..., ge=0, description="Failed orders count")
+    number_of_successful_orders: float = Field(..., ge=0, description="Successful orders count")
+
+
+class PredictRequest(CustomerFeatures):
+    """Single-customer prediction request."""
+
 
 class BatchPredictRequest(BaseModel):
-    features_batch: List[List[float]]
+    customers: List[CustomerFeatures]
 
 class PredictResponse(BaseModel):
     cluster: Optional[int] = None
