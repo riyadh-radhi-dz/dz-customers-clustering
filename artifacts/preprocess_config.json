@@ -1,0 +1,39 @@
+{
+  "feature_columns": [
+    "age",
+    "number_of_sessions",
+    "days_since_first_joined",
+    "number_of_failed_orders",
+    "number_of_successful_orders",
+    "gender",
+    "bnpl_eligible"
+  ],
+  "numeric_medians": {
+    "age": 34.83093771389459,
+    "number_of_sessions": 2.0,
+    "days_since_first_joined": 175.0,
+    "number_of_failed_orders": 0.0,
+    "number_of_successful_orders": 18.0
+  },
+  "numeric_columns": [
+    "age",
+    "number_of_sessions",
+    "days_since_first_joined",
+    "number_of_failed_orders",
+    "number_of_successful_orders"
+  ],
+  "log_columns": [
+    "number_of_sessions",
+    "number_of_failed_orders",
+    "number_of_successful_orders"
+  ],
+  "gender_categories": [
+    "M",
+    "F",
+    "Unknown"
+  ],
+  "categorical_columns": [
+    "gender",
+    "bnpl_eligible"
+  ]
+}
