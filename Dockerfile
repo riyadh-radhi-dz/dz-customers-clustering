@@ -2,6 +2,11 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
+# Metadata
+LABEL name="dz-clustering"
+LABEL description="DZ Customers Clustering API"
+LABEL version="0.1.0"
+
 # Install uv
 RUN pip install uv
 
