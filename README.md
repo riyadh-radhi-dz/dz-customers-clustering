@@ -182,7 +182,128 @@ Once the API is running, visit:
 
 ## 🏗 Architecture
 
-### High-Level Architecture
+### MLOps Architecture Overview
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│                   🚀 DZ CUSTOMER CLUSTERING - MLOps ARCHITECTURE                   │
+└────────────────────────────────────────────────────────────────────────────────────┘
+
+
+    ┌─────────────────────┐         ┌─────────────────────┐         ┌─────────────────────┐
+    │                     │         │                     │         │                     │
+    │    📊 TRAINING      │────────▶│   📈 MONITORING     │────────▶│   🚀 DEPLOYMENT     │
+    │                     │         │                     │         │                     │
+    └─────────────────────┘         └─────────────────────┘         └─────────────────────┘
+
+
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│                                    TRAINING                                          │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│    🗄️                  📊                  🐍                  📦                   │
+│  ClickHouse  ───────▶  CSV Data  ───────▶  Python  ───────▶  MLflow                │
+│  Database           Training Data      K-Prototypes      Experiment                │
+│                                           Model            Tracking                 │
+│                                             │                                        │
+│                                             ▼                                        │
+│                    ┌────────────────────────────────────────┐                       │
+│                    │  🏆 Champion/Challenger Pattern        │                       │
+│                    │                                        │                       │
+│                    │  Challenger ──▶ Validate ──▶ Promote? │                       │
+│                    │                    │                   │                       │
+│                    │                    ├─ Yes ──▶ Champion │                       │
+│                    │                    └─ No  ──▶ Reject   │                       │
+│                    └────────────────────────────────────────┘                       │
+│                                             │                                        │
+│                                             ▼                                        │
+│                                      💾 Artifact Storage                            │
+│                                    (Model Files + Metadata)                         │
+│                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+
+
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│                                   MONITORING                                         │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│    📊 Production Data       🔍 Model Monitoring       📈 Metrics & Dashboards       │
+│         │                           │                          │                    │
+│         ▼                           ▼                          ▼                    │
+│    ┌─────────┐              ┌─────────────┐           ┌──────────────┐            │
+│    │ FastAPI │─────────────▶│   MLflow    │◀──────────│  Prometheus  │            │
+│    │   API   │              │  Tracking   │           │  + Grafana   │            │
+│    └─────────┘              └─────────────┘           └──────────────┘            │
+│                                                                                      │
+│    • Data Drift Detection    • Performance Metrics    • Real-time Alerts           │
+│    • Feature Quality         • Prediction Logs        • Custom Dashboards          │
+│                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+
+
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│                                   DEPLOYMENT                                         │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│                            🐳 Docker Container                                       │
+│                     ┌──────────────────────────────────┐                            │
+│                     │    ⚡ FastAPI Service            │                            │
+│                     │   (Model API Endpoint)           │                            │
+│                     │                                  │                            │
+│                     │  • Authentication                │                            │
+│                     │  • Rate Limiting                 │                            │
+│                     │  • Caching                       │                            │
+│                     │  • Load Champion Model           │                            │
+│                     └──────────────────────────────────┘                            │
+│                                   │                                                  │
+│          ┌────────────────────────┼────────────────────────┐                        │
+│          │                        │                        │                        │
+│          ▼                        ▼                        ▼                        │
+│                                                                                      │
+│  🐳 Docker Compose      ☸️  Kubernetes        🔄 GitHub Actions                     │
+│  (Development)          (Production)          (CI/CD Pipeline)                      │
+│                                                                                      │
+│  • Local testing        • Auto-scaling        • Automated training                  │
+│  • All services         • High availability   • Validation & promotion              │
+│  • Quick iteration      • Load balancing      • Automated deployment                │
+│                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+
+
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│                              🔄 AUTOMATED WORKFLOW                                   │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│   ⏰ Daily (2 AM UTC)                                                                │
+│        │                                                                             │
+│        ▼                                                                             │
+│   Extract Data ──▶ Train Model ──▶ Validate ──▶ Promote? ──▶ Deploy               │
+│   (ClickHouse)   (K-Prototypes)  (Compare)    (If Better)   (Reload API)           │
+│                                                                                      │
+│        │              │              │            │            │                     │
+│        └──────────────┴──────────────┴────────────┴────────────┘                    │
+│                                   │                                                  │
+│                                   ▼                                                  │
+│                         📊 MLflow Logging                                            │
+│                  (All metrics, params, artifacts)                                   │
+│                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+
+
+                        ┌────────────────────────────────┐
+                        │     🔧 TECH STACK              │
+                        ├────────────────────────────────┤
+                        │  Data: ClickHouse              │
+                        │  ML: K-Prototypes, scikit-learn│
+                        │  API: FastAPI                  │
+                        │  Tracking: MLflow              │
+                        │  Metrics: Prometheus + Grafana │
+                        │  Deploy: Docker + Kubernetes   │
+                        │  CI/CD: GitHub Actions         │
+                        └────────────────────────────────┘
+```
+
+### Detailed System Architecture
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -532,13 +653,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Prometheus for monitoring
 - MLflow for experiment tracking
 - The open-source community
-
-## 📧 Contact
-
-- **Team**: DigitalZone ML Team
-- **Email**: ml-ops@digitalzone.com
-- **Issues**: [GitHub Issues](https://github.com/digitalzone/dz-customers-clustering/issues)
-- **Slack**: #dz-clustering
 
 ---
 
