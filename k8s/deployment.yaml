@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dz-clustering-api
+  labels:
+    app: dz-clustering
+    component: api
+    version: v1
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: dz-clustering
+      component: api
+  template:
+    metadata:
+      labels:
+        app: dz-clustering
+        component: api
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: api
+        image: dz-customers-clustering:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+        env:
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: DEBUG
+          value: "false"
+        - name: AUTH_ENABLED
+          value: "true"
+        - name: ENABLE_METRICS
+          value: "true"
+        - name: ENABLE_DRIFT_DETECTION
+          value: "true"
+        - name: RATE_LIMIT_PER_MINUTE
+          value: "100"
+        - name: RATE_LIMIT_PER_HOUR
+          value: "5000"
+        envFrom:
+        - secretRef:
+            name: dz-clustering-secrets
+        - configMapRef:
+            name: dz-clustering-config
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: model-artifacts
+          mountPath: /app/artifacts
+          readOnly: true
+      volumes:
+      - name: model-artifacts
+        persistentVolumeClaim:
+          claimName: dz-clustering-models
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - dz-clustering
+              topologyKey: kubernetes.io/hostname
+

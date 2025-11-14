@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dz-clustering-config
+data:
+  MODEL_PATH: "artifacts/kmeans_cta_model.pkl"
+  SCALER_PATH: "artifacts/scaler.pkl"
+  METADATA_PATH: "artifacts/preprocess_config.json"
+  CORS_ORIGINS: '["*"]'
+  MAX_WORKERS: "4"
+  MLFLOW_EXPERIMENT_NAME: "dz-customers-clustering"
+  MLFLOW_MODEL_NAME: "customer-clustering"
+  DRIFT_DETECTION_THRESHOLD: "0.1"
+  MIN_SAMPLES_FOR_DRIFT: "100"
+
